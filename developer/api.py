@@ -6,6 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, datetime
 import httpx
 from typing import Optional
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -24,11 +28,11 @@ def read_root():
 
 def getConnection():
     return pymysql.connect(
-        host='52.12.110.149',
-        user='newvirus',
-        password='3d462a1b271d-4fc4-4c2748f0-9422-fb9f2f3d137d81bd',
-        db='admin_zaroprod',
-        port=3306,
+        host=os.getenv('DB_HOST'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        db=os.getenv('DB_NAME'),
+        port=os.getenv('DB_PORT'),
         charset='latin1',
         cursorclass=pymysql.cursors.DictCursor
     )
