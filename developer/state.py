@@ -122,6 +122,24 @@ class State(rx.State):
             # Recarga los datos del cliente que ya está seleccionado
             yield type(self).cargar_viajes_cliente(self.selected_cliente)
     
+    @rx.var
+    def total_pages(self) -> int:
+        """Calcula el número total de páginas."""
+        if self.total_items == 0:
+            return 1
+        return ((self.total_items - 1) // self.limit) + 1
+
+    @rx.var
+    def prev_disabled(self) -> bool:
+        """Determina si el botón 'Anterior' debe estar deshabilitado."""
+        return self.page <= 1 or self.loading
+
+    @rx.var
+    def next_disabled(self) -> bool:
+        """Determina si el botón 'Siguiente' debe estar deshabilitado."""
+        return self.page >= self.total_pages or self.loading
+    
+    
     def prev_viajes_page(self):
         """Retrocede a la página de viajes en el modal."""
         if self.viajes_page > 1:
@@ -139,7 +157,27 @@ class State(rx.State):
             self.sucursales_list = response_data.get("data", [])
         except Exception as e:
             self.error = f"Error: {str(e)}"
-    
+            
+    @rx.var
+    def sucursal_options(self) -> list[dict]:
+        """Prepara la lista completa de opciones para el select."""
+        # Empieza con la opción estática para "Todas"
+        options = [{"value": "all", "label": "Todas las Sucursales"}]
+        
+        # Añade las sucursales de la lista
+        for s in self.sucursales_list:
+            options.append({
+                "value": str(s.get("intSucursal")),
+                "label": s.get("strNombreSucursal"),
+            })
+        return options
+
+    def on_sucursal_change(self, selected_value: str):
+        if selected_value == "all":
+            self.sucursal = ""
+        else:
+            self.sucursal = selected_value
+
     async def cargar_reporte(self):
         self.loading = True
         self.error = ""
@@ -177,7 +215,10 @@ class State(rx.State):
         self.fecha_fin = ""
         self.search_query = ""
         self.sucursal = ""
-        yield type(self).cargar_reporte
+        self.page = 1
+        self.reporte_data = []
+        self.total_items = 0
+        self.grand_totals = {}
 
     async def cargar_viajes_cliente(self, cliente: dict): # Acepta el dict completo
         if self.selected_cliente.get("intIdCliente") != cliente.get("intIdCliente"):
@@ -196,6 +237,8 @@ class State(rx.State):
                 params["fecha_inicio"] = self.fecha_inicio
             if self.fecha_fin:
                 params["fecha_fin"] = self.fecha_fin
+            if self.sucursal:
+                params["sucursal"] = self.sucursal
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(

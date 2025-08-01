@@ -55,37 +55,33 @@ def reporte_clientes():
             rx.center(
                 rx.card(
                     rx.hstack(
-                        rx.input(type="date", value=State.fecha_inicio, on_change=State.set_fecha_inicio),
+                        rx.input(type="date", value=State.fecha_inicio, on_change=State.set_fecha_inicio, disabled=State.loading),
                         rx.text("a"),
-                        rx.input(type="date", value=State.fecha_fin, on_change=State.set_fecha_fin),
-                        rx.input(placeholder="Buscar por nombre...", value=State.search_query, on_change=State.set_search_query, margin_left="2em"),
+                        rx.input(type="date", value=State.fecha_fin, on_change=State.set_fecha_fin, disabled=State.loading),
+                        rx.input(placeholder="Buscar por nombre...", value=State.search_query, on_change=State.set_search_query, margin_left="2em", disabled=State.loading),
                         #rx.text(f"Periodo de fechas: {State.fecha_inicio} a {State.fecha_fin}"),
-                        rx.dropdown_menu.root(
-                            # La parte visible del menú, que muestra la selección actual
-                            rx.dropdown_menu.trigger(
-                                rx.button(
-                                    State.sucursal_seleccionada_nombre,
-                                    variant="soft",
-                                    right_icon="chevron-down",
-                                )
-                            ),
-                            # El contenido que se despliega
-                            rx.dropdown_menu.content(
+                        rx.select.root(
+                            rx.select.trigger(placeholder="Todas las Sucursales"),
+                            rx.select.content(
                                 rx.foreach(
-                                    State.sucursales_list,
-                                    lambda sucursal, index: rx.dropdown_menu.item(
-                                        sucursal["strNombreSucursal"],
-                                        # CORRECCIÓN: El evento de clic está en cada item
-                                        on_click=lambda: State.handle_sucursal_change(index),
+                                    State.sucursal_options,
+                                    lambda option: rx.select.item(
+                                        option["label"],
+                                        value=option["value"],
+                                        key=option["value"]
                                     )
-                                )
+                                ),
                             ),
-                            margin_left="1em"
+                            value=State.sucursal,
+                            on_change=State.on_sucursal_change,
+                            disabled=State.loading,
+                            margin_left="1em",
                         ),
-                        rx.button("Aplicar Filtros", on_click=State.cargar_reporte),
+                        rx.button("Aplicar Filtros", on_click=State.cargar_reporte,disabled=State.loading),
                         rx.button ("Limpiar Filtros", 
                                    on_click=State.limpiar_filtros,
-                                   color_scheme="red"),
+                                   color_scheme="red",
+                                   disabled=State.loading),
                         spacing="3",
                         width="100%",
                         margin_bottom="1",
@@ -122,9 +118,9 @@ def reporte_clientes():
             
             # Paginación de la Tabla Principal
             rx.hstack(
-                rx.button("Anterior", on_click=State.prev_page, disabled=State.page <= 1),
-                rx.text(f"Página {State.page} de {((State.total_items -1) // State.limit) + 1}"),
-                rx.button("Siguiente", on_click=State.next_page, disabled=(State.page * State.limit) >= State.total_items),
+                rx.button("Anterior", on_click=State.prev_page, disabled=State.prev_disabled),
+                rx.text(f"Página {State.page} de {State.total_pages}"),
+                rx.button("Siguiente", on_click=State.next_page, disabled=State.next_disabled),
                 justify="center",
                 align="center",
                 width="100%",
