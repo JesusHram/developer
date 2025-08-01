@@ -1,8 +1,8 @@
 import reflex as rx
 
 config = rx.Config(
-    api_url="http://dashboard.zarotransportation.com",
     app_name="developer",
+    api_url="http://dashboard.zarotransportation.com",
     tailwind={
         "theme": {
             "extend": {
