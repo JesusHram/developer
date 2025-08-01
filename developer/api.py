@@ -22,17 +22,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+db_host = os.getenv("DB_HOST")
+db_user = os.getenv("DB_USER")
+db_password = os.getenv("DB_PASSWORD")
+db_name = os.getenv("DB_NAME")
+db_port = 3306
+
 @app.get("/")
 def read_root():
     return {"message": "API funcionando"}
 
 def getConnection():
     return pymysql.connect(
-        host=os.getenv('DB_HOST'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        db=os.getenv('DB_NAME'),
-        port=os.getenv('DB_PORT'),
+        host=db_host,
+        user=db_user,
+        password=db_password,
+        db=db_name,
+        port=db_port,
         charset='latin1',
         cursorclass=pymysql.cursors.DictCursor
     )
@@ -124,9 +130,6 @@ def embarques():
         conn.close()
         
 
-
-# En tu archivo de FastAPI
-
 @app.get("/reporte-clientes/")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
@@ -136,133 +139,101 @@ async def get_reporte_clientes(
     limit: int = Query(10, ge=1, le=100),
     sucursal: Optional[str] = Query(None)
 ):
-    # 1. La consulta base ahora solo contiene los JOINs y filtros de fecha
-    filter_params = []
+    # Parámetros para las condiciones del JOIN (solo fechas)
+    date_params = []
+    join_conditions_sql = ""
     join_conditions = []
-    
-    # Prepara las condiciones de fecha para el JOIN
     if fecha_inicio:
         join_conditions.append("DATE(emb.dateFechaRecoleccion) >= %s")
-        filter_params.append(fecha_inicio)
+        date_params.append(fecha_inicio)
     if fecha_fin:
         join_conditions.append("DATE(emb.dateFechaRecoleccion) <= %s")
-        filter_params.append(fecha_fin)
-    if sucursal is not None:
-        join_conditions.append("emb.intSucursal = %s")
-        filter_params.append(sucursal)   
-    # Construye las cadenas de texto para las condiciones
-    join_conditions_sql = ("AND " + " AND ".join(join_conditions)) if join_conditions else ""
+        date_params.append(fecha_fin)
     
-    # Prepara la búsqueda por nombre del cliente para el WHERE
-    where_conditions = []
+    if join_conditions:
+        join_conditions_sql = "AND " + " AND ".join(join_conditions)
+
+    # --- CORRECCIÓN: Condiciones WHERE para filtrar la lista de clientes ---
     where_params = []
+    where_conditions = []
     
     if search:
         where_conditions.append("cl.strNombreCte LIKE %s")
         where_params.append(f"%{search}%")
- 
-        # --- INICIO DE LA DEPURACIÓN ---
-    # Imprime el valor y tipo de 'sucursal' que llega a la API
-    print(f">>> DEBUG: Recibido sucursal = {sucursal}, Tipo = {type(sucursal)}")
 
     if sucursal is not None:
-        # Imprime un mensaje si la condición se cumple
-        print(f">>> DEBUG: El filtro 'if sucursal' se activó para el valor {sucursal}")
-        where_conditions.append("cl.intIdCliente IN (SELECT DISTINCT intIdCliente FROM embarques WHERE intSucursal = %s)")
+        # Filtra la tabla de clientes directamente por sucursal
+        # Asumiendo que tu tabla 'clientes' tiene una columna 'intSucursal'
+        where_conditions.append("cl.intSucursal = %s")
+        where_conditions.append("emb.intOcupado != 0")
         where_params.append(sucursal)
-    # --- FIN DE LA DEPURACIÓN ---
-    
-    # Construye las cadenas de texto para las condiciones
+        
     where_conditions_sql = ("WHERE " + " AND ".join(where_conditions)) if where_conditions else ""
     
     try:
         with getConnection() as conn:
             with conn.cursor() as cursor:
-                # 2. La consulta de conteo ahora es más simple: cuenta clientes
+                # La consulta de conteo ahora usa el WHERE correcto para contar clientes
                 count_query = f"SELECT COUNT(*) as total FROM clientes cl {where_conditions_sql}"
                 cursor.execute(count_query, where_params)
                 total_count = cursor.fetchone()['total']           
                 
-                # 3. La consulta de datos principal, reescrita
-                offset = (page - 1) * limit
                 data_query = f"""
                     SELECT 
-                        cl.intIdCliente,
-                        cl.strNombreCte, 
-                        ROUND(COALESCE(COUNT(v.intIdViaje), 0), 2) as Viajes,
-                        ROUND(COALESCE(SUM(emb.floatDistanciaGoogle), 0), 2) as millasCargadas,
-                        ROUND(COALESCE(SUM(v.strMillasVacias), 0), 2) as millasVacias,
-                        ROUND(COALESCE(SUM(emb.strRate), 0), 2) as Rate,
-                        COALESCE(SUM(emb.floatDistanciaGoogle + v.strMillasVacias), 0) as millasTotales,
-                        COUNT(IF(intDirEntraSale=2,1,NULL)) AS NB,
-                        COUNT(IF(intDirEntraSale=1,1,NULL)) AS SB,
+                        cl.intIdCliente, cl.strNombreCte,
+                        emb.intOcupado, 
+                        COALESCE(COUNT(v.intIdViaje), 0) as Viajes,
+                        COALESCE(SUM(emb.floatDistanciaGoogle), 0) as millasCargadas,
+                        COALESCE(SUM(v.strMillasVacias), 0) as millasVacias,
+                        COALESCE(SUM(emb.strRate), 0) as Rate,
+                        SUM(CASE WHEN emb.intDirEntraSale = 2 THEN 1 ELSE 0 END) AS NB,
+                        SUM(CASE WHEN emb.intDirEntraSale = 1 THEN 1 ELSE 0 END) AS SB,
                         CASE 
                             WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0 
-                            THEN ROUND(COALESCE(SUM(emb.strRate), 0) / (SUM(emb.floatDistanciaGoogle + v.strMillasVacias)), 0)    
+                            THEN COALESCE(SUM(emb.strRate), 0) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
                             ELSE 0
                         END as rate_perMile,
-                        IF(emb.intSucursal = 1, 'RAM','ZARO') as Sucursal
-                    FROM 
-                        clientes cl
-                    LEFT JOIN 
-                        embarques emb ON cl.intIdCliente = emb.intIdCliente {join_conditions_sql}
-                    LEFT JOIN 
-                        viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
-                    LEFT JOIN 
-                        viajes v ON ve.intIdViaje = v.intIdViaje
+                        IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal
+                    FROM clientes cl
+                    LEFT JOIN embarques emb ON cl.intIdCliente = emb.intIdCliente {join_conditions_sql}
+                    LEFT JOIN viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
+                    LEFT JOIN viajes v ON ve.intIdViaje = v.intIdViaje
                     {where_conditions_sql}
-                    GROUP BY 
-                        cl.intIdCliente, cl.strNombreCte
-                    ORDER BY 
-                        cl.strNombreCte
-                    LIMIT %s OFFSET %s
+                    GROUP BY cl.intIdCliente, cl.strNombreCte
+                    ORDER BY cl.strNombreCte
                 """
-                # Los parámetros son los de la búsqueda + los de la fecha + la sucursal + los de paginación
-                final_params = filter_params + where_params + [limit, offset]
+                
+                # El orden de los parámetros debe coincidir con la consulta: fechas, luego where, luego paginación
+                final_params = date_params + where_params
                 cursor.execute(data_query, final_params)
                 results = cursor.fetchall()
                 
-                #Nueva Consulta para totales
-                grand_totals_query = f"""
-                    SELECT
-                        COALESCE(SUM(sub.Viajes), 0) as total_viajes,
-                        COALESCE(SUM(sub.millasCargadas), 0) as total_millas,
-                        COALESCE(SUM(sub.Rate), 0) as total_rate,
-                        COALESCE(SUM(sub.millasVacias), 0) as millasVacias,
-                        COALESCE(SUM(sub.NB), 0) as NB,
-                        COALESCE(SUM(sub.SB), 0) as SB,
-                        COALESCE(SUM(sub.rate_perMile), 0) as rate_perMile
-                    FROM (
-                        SELECT 
-                            COUNT(v.intIdViaje) as Viajes,
-                            SUM(emb.floatDistanciaGoogle) as millasCargadas,
-                            SUM(emb.strRate) as Rate,
-                            SUM(v.strMillasVacias) as millasVacias,
-                            COUNT(IF(intDirEntraSale=2,1,NULL)) AS NB,
-                            COUNT(IF(intDirEntraSale=1,1,NULL)) AS SB,
-                            CASE 
-                            WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0 
-                            THEN ROUND(COALESCE(SUM(emb.strRate), 0) / (SUM(emb.floatDistanciaGoogle + v.strMillasVacias)), 0)    
-                            ELSE 0
-                        END as rate_perMile
-                        FROM clientes cl
-                        LEFT JOIN embarques emb ON cl.intIdCliente = emb.intIdCliente {join_conditions_sql}
-                        LEFT JOIN viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
-                        LEFT JOIN viajes v ON ve.intIdViaje = v.intIdViaje
-                        {where_conditions_sql}
-                        GROUP BY cl.intIdCliente
-                    ) as sub
-                """
-                totals_params =filter_params + where_params
-                cursor.execute(grand_totals_query, totals_params)
-                grand_totals = cursor.fetchone()
-
-                # La respuesta sigue teniendo la misma estructura
+                total_count = len(results)
+            
+                total_millas_Cargadas = sum(row.get('millasCargadas', 0) for row in results)
+                total_millas_Vacias = sum(row.get('millasVacias', 0) for row in results)
+                total_rate = sum(row.get('Rate', 0) for row in results)
+                
+                millas_totales = total_millas_Cargadas + total_millas_Vacias
+                rate_per_mile_general = (total_rate / millas_totales) if millas_totales > 0 else 0
+                
+                grand_totals = {
+                    "total_millas": millas_totales,
+                    "millasVacias": total_millas_Vacias,
+                    "total_rate": total_rate,
+                    "rate_perMile": rate_per_mile_general,
+                    "NB": sum(row.get('NB', 0) for row in results),
+                    "SB": sum(row.get('SB', 0) for row in results),
+                }
+                
+                offset = (page - 1) * limit
+                paginated_results = results[offset : offset + limit]
+                
                 return {
                     "total": total_count,
                     "page": page,
                     "limit": limit,
-                    "data": results,
+                    "data": paginated_results,
                     "grand_totals": grand_totals
                 }
 
@@ -277,7 +248,8 @@ async def get_viajes_cliente(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
     page: int = Query(1, ge=1, description="Número de página"),
-    limit: int = Query(10, ge=1, le=100, description="Registros por página")
+    limit: int = Query(10, ge=1, le=100, description="Registros por página"),
+    sucursal: Optional[str] = Query(None)
 ):
     # --- 1. Construir la base de la consulta y los filtros ---
     base_query = """
@@ -295,7 +267,12 @@ async def get_viajes_cliente(
     if fecha_fin:
         conditions.append("DATE(e.dateFechaRecoleccion) <= %s")
         params.append(fecha_fin)
+    if sucursal:
+        conditions.append("e.intSucursal = %s")
+        params.append(sucursal)
 
+    conditions.append("v.intIdViaje IS NOT NULL")
+    
     if conditions:
         base_query += " AND " + " AND ".join(conditions)
 
@@ -318,7 +295,32 @@ async def get_viajes_cliente(
                         v.strMillasVacias,
                         e.strRate,
                         e.dateFechaRecoleccion as FechaRecoleccion,
-                        IF(e.intDirEntraSale=2,'NB','SB') as ViajeTipo
+                        CASE
+                            WHEN e.intDirEntraSale = 1 THEN 'NB'
+                            WHEN e.intDirEntraSale = 2 THEN 'SB'
+                        END AS ViajeTipo,
+                    CASE
+                        WHEN e.intInternacional = 1 OR e.intIdEmbarqueInternacional > 0 THEN 'Internacional'
+                        ELSE 'Nacional'
+                    END AS Internacional,
+                    CASE
+                        WHEN e.intInternacional = 1 OR e.intIdEmbarqueInternacional > 0 THEN
+                            CASE
+                                WHEN e.intDirEntraSale = 1 THEN 'NB D2D'
+                                WHEN e.intDirEntraSale = 2 THEN 'SB D2D'
+                            END
+                        ELSE
+                            CASE
+                                WHEN e.intDirEntraSale = 1 THEN 'NB'
+                                WHEN e.intDirEntraSale = 2 THEN 'SB'
+                            END
+                    END AS TIPO,
+                    CASE
+                        WHEN e.intCargado = 1 AND e.intTrompo = 0 AND e.intVacio = 0 THEN 'Cargado'
+                        WHEN e.intVacio = 1 AND e.intCargado = 0 AND e.intTrompo = 0 THEN 'Vacío'
+                        WHEN e.intTrompo = 1 AND e.intCargado = 0 AND e.intVacio = 0 THEN 'Trompo'
+                        ELSE 'Desconocido'
+                    END AS STATUS
                     {base_query}
                     ORDER BY e.dateFechaRecoleccion DESC
                     LIMIT %s OFFSET %s
@@ -327,7 +329,6 @@ async def get_viajes_cliente(
                 data_params = params + [limit, offset]
                 cursor.execute(data_query, data_params)
                 
-                # Asumiendo que usas un DictCursor como en los ejemplos anteriores
                 results = cursor.fetchall()
                 
                 return {
@@ -402,10 +403,25 @@ async def get_comparativa_cliente(
 async def get_sucursales():
     query = """
         SELECT DISTINCT
-            emb.intSucursal,
-            IF(emb.intSucursal = 1, 'RAM', 'ZARO') as strNombreSucursal
-        FROM embarques emb
-        WHERE emb.intSucursal IN (1,2)
+            cl.intSucursal,
+            IF(cl.intSucursal = 1, 'RAM', 'ZARO') as strNombreSucursal
+        FROM clientes cl
+        WHERE cl.intSucursal IN (1,2)
+    """
+    try:
+        with getConnection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                results = cursor.fetchall()
+                return {"data": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
+@app.get("/reporte-camiones/")
+async def get_reporte_camiones():
+    
+    query = """
     """
     try:
         with getConnection() as conn:

@@ -5,6 +5,7 @@ from developer.state import State
 # Helper para renderizar las filas de la tabla de viajes
 def render_viaje_row(row: dict):
     return rx.table.row(
+        rx.table.cell(row["intIdViaje"]),
         rx.table.cell(row["Origen"]),
         rx.table.cell(row["Destino"]),
         rx.table.cell((row["floatDistanciaGoogle"])), 
@@ -12,6 +13,9 @@ def render_viaje_row(row: dict):
         rx.table.cell((row["strRate"])),
         rx.table.cell(row["FechaRecoleccion"]),
         rx.table.cell(row["ViajeTipo"]),
+        rx.table.cell(row["Internacional"]),
+        rx.table.cell(row["TIPO"]),
+        rx.table.cell(row["STATUS"])
     )
 
 def viajes_modal():
@@ -24,6 +28,7 @@ def viajes_modal():
                     rx.table.header(
                         # --- CORRECCIÓN: Esta es la cabecera correcta para los viajes ---
                         rx.table.row(
+                            rx.table.column_header_cell("Viaje"),
                             rx.table.column_header_cell("Origen"),
                             rx.table.column_header_cell("Destino"),
                             rx.table.column_header_cell("Millas Carg."),
@@ -31,6 +36,9 @@ def viajes_modal():
                             rx.table.column_header_cell("Rate"),
                             rx.table.column_header_cell("Fecha"),
                             rx.table.column_header_cell("Viaje Tipo"),
+                            rx.table.column_header_cell("Internacional"),
+                            rx.table.column_header_cell("TIPO"),
+                            rx.table.column_header_cell("STATUS")
                         )
                     ),
                     rx.table.body(
@@ -55,7 +63,7 @@ def viajes_modal():
                         margin_top="1em"
                 ),
             ),
-            style={"max_width": "700px"}
+            style={"max_width": "1000px"}
         ),
         # El modal se abre si la variable de estado es "viajes"
         open=(State.modal_abierto == "viajes"),
