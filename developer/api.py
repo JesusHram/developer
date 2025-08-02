@@ -144,6 +144,7 @@ async def get_reporte_clientes(
     limit: int = Query(10, ge=1, le=100),
     sucursal: Optional[str] = Query(None)
 ):
+    print(f"\n>>> API RECIBIÓ PETICIÓN PARA PÁGINA: {page}")
     # Parámetros para la subconsulta (actividad)
     subquery_params = []
     subquery_conditions = ["emb.intOcupado != 0"]
@@ -227,7 +228,13 @@ async def get_reporte_clientes(
                 results = cursor.fetchall()
                 
                 total_count = len(results)
-            
+                             
+                offset = (page - 1) * limit
+                
+                print(f">>> CALCULANDO OFFSET: {offset} (para página {page})")
+
+                paginated_results = results[offset : offset + limit]
+                
                 total_millas_Cargadas = sum(row.get('millasCargadas', 0) for row in results)
                 total_millas_Vacias = sum(row.get('millasVacias', 0) for row in results)
                 total_rate = sum(row.get('Rate', 0) for row in results)
@@ -235,6 +242,7 @@ async def get_reporte_clientes(
                 millas_totales = total_millas_Cargadas + total_millas_Vacias
                 rate_per_mile_general = (total_rate / millas_totales) if millas_totales > 0 else 0
                 
+
                 grand_totals = {
                     "total_millas": millas_totales,
                     "millasVacias": total_millas_Vacias,
@@ -243,10 +251,7 @@ async def get_reporte_clientes(
                     "NB": sum(row.get('NB', 0) for row in results),
                     "SB": sum(row.get('SB', 0) for row in results),
                 }
-                total_count = len(results)
 
-                offset = (page - 1) * limit
-                paginated_results = results[offset : offset + limit]
                 
                 return {
                     "total": total_count,
