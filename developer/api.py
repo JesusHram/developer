@@ -135,7 +135,6 @@ def embarques():
         
 
 @app.get("/reporte-clientes/")
-@app.get("/reporte-clientes/")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
