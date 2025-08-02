@@ -11,7 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(
+    title="API Developer",
+    root_path="/api",
+    version="1.0",
+    description="API para la aplicación de desarrolladores",
+)
 
 # Configura CORS para permitir conexiones desde Reflex
 app.add_middleware(
