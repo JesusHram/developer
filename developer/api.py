@@ -187,11 +187,11 @@ async def get_reporte_clientes(
                         cl.intIdCliente, cl.strNombreCte,
                         emb.intOcupado, 
                         COALESCE(COUNT(v.intIdViaje), 0) as Viajes,
-                        COALESCE(SUM(emb.floatDistanciaGoogle), 0) as millasCargadas,
+                        COALESCE(SUM(CASE WHEN v.intIdViaje IS NOT NULL THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as millasCargadas,
                         COALESCE(SUM(v.strMillasVacias), 0) as millasVacias,
-                        COALESCE(SUM(emb.strRate), 0) as Rate,
-                        SUM(CASE WHEN emb.intDirEntraSale = 2 THEN 1 ELSE 0 END) AS NB,
-                        SUM(CASE WHEN emb.intDirEntraSale = 1 THEN 1 ELSE 0 END) AS SB,
+                        COALESCE(SUM(CASE WHEN v.intIdViaje IS NOT NULL THEN emb.strRate ELSE 0 END), 0) as Rate,
+                        COALESCE(COUNT(CASE WHEN v.intIdViaje IS NOT NULL AND emb.intDirEntraSale = 2 THEN 1 END), 0) AS NB,
+                        COALESCE(COUNT(CASE WHEN v.intIdViaje IS NOT NULL AND emb.intDirEntraSale = 1 THEN 1 END), 0) AS SB,
                         CASE 
                             WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0 
                             THEN COALESCE(SUM(emb.strRate), 0) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
@@ -201,7 +201,7 @@ async def get_reporte_clientes(
                     FROM clientes cl
                     LEFT JOIN embarques emb ON cl.intIdCliente = emb.intIdCliente {join_conditions_sql}
                     LEFT JOIN viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
-                    LEFT JOIN viajes v ON ve.intIdViaje = v.intIdViaje
+                    INNER JOIN viajes v ON ve.intIdViaje = v.intIdViaje
                     {where_conditions_sql}
                     GROUP BY cl.intIdCliente, cl.strNombreCte
                     ORDER BY cl.strNombreCte
