@@ -251,7 +251,7 @@ async def get_reporte_clientes(
                     "total": total_count,
                     "page": page,
                     "limit": limit,
-                    "data": paginated_results,
+                    "data": results,
                     "grand_totals": grand_totals
                 }
 
