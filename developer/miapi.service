@@ -1,0 +1,20 @@
+[Unit]
+Description=Gunicorn instance for my API
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/developer
+# Aquí apuntas al Gunicorn dentro de tu venv
+ExecStart=/home/ubuntu/developer/venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 developer.api:app
+
+#VariablesdeEntorno
+Environment="DB_HOST=52.12.110.149"
+Environment="DB_USER=newvirus"
+Environment="DB_PASSWORD=3d462a1b271d-4fc4-4c2748f0-9422-fb9f2f3d137d81bd"
+Environment="DB_NAME=admin_zaroprod"
+Environment="DB_PORT=3306"
+
+[Install]
+WantedBy=multi-user.target

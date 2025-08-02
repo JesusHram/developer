@@ -1,0 +1,15 @@
+[Unit]
+Description=Reflex Frontend Server
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/developer
+
+# El comando para iniciar el servidor de Node.js de Reflex
+ExecStart=/home/ubuntu/developer.bun/bin/bun start
+Environment="PORT=3000"
+
+[Install]
+WantedBy=multi-user.target
