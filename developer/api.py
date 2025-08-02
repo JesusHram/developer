@@ -243,7 +243,8 @@ async def get_reporte_clientes(
                     "NB": sum(row.get('NB', 0) for row in results),
                     "SB": sum(row.get('SB', 0) for row in results),
                 }
-                
+                total_count = len(results)
+
                 offset = (page - 1) * limit
                 paginated_results = results[offset : offset + limit]
                 
