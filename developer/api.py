@@ -179,6 +179,9 @@ async def get_reporte_clientes(
             with conn.cursor() as cursor:
                 # La consulta de conteo ahora usa el WHERE correcto para contar clientes
                 count_query = f"SELECT COUNT(*) as total FROM clientes cl {where_conditions_sql}"
+                print("\n--- DEBUG: COUNT QUERY ---")
+                print(count_query)
+                print("PARAMS:", where_params)
                 cursor.execute(count_query, where_params)
                 total_count = cursor.fetchone()['total']           
                 
@@ -209,6 +212,9 @@ async def get_reporte_clientes(
                 
                 # El orden de los parámetros debe coincidir con la consulta: fechas, luego where, luego paginación
                 final_params = date_params + where_params
+                print("\n--- DEBUG: DATA QUERY ---")
+                print(data_query)
+                print("PARAMS:", final_params)
                 cursor.execute(data_query, final_params)
                 results = cursor.fetchall()
                 
