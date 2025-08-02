@@ -135,6 +135,7 @@ def embarques():
         
 
 @app.get("/reporte-clientes/")
+@app.get("/reporte-clientes/")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
@@ -143,72 +144,85 @@ async def get_reporte_clientes(
     limit: int = Query(10, ge=1, le=100),
     sucursal: Optional[str] = Query(None)
 ):
-    # Parámetros para las condiciones del JOIN (solo fechas)
-    date_params = []
-    join_conditions_sql = ""
-    join_conditions = []
+    # Parámetros para la subconsulta (actividad)
+    subquery_params = []
+    subquery_conditions = ["emb.intOcupado != 0"]
     if fecha_inicio:
-        join_conditions.append("DATE(emb.dateFechaRecoleccion) >= %s")
-        date_params.append(fecha_inicio)
+        subquery_conditions.append("DATE(emb.dateFechaRecoleccion) >= %s")
+        subquery_params.append(fecha_inicio)
     if fecha_fin:
-        join_conditions.append("DATE(emb.dateFechaRecoleccion) <= %s")
-        date_params.append(fecha_fin)
+        subquery_conditions.append("DATE(emb.dateFechaRecoleccion) <= %s")
+        subquery_params.append(fecha_fin)
     
-    if join_conditions:
-        join_conditions_sql = "AND " + " AND ".join(join_conditions)
+    subquery_where_sql = "WHERE " + " AND ".join(subquery_conditions)
 
-    # --- CORRECCIÓN: Condiciones WHERE para filtrar la lista de clientes ---
-    where_params = []
-    where_conditions = []
-    
+    # Parámetros para la consulta principal (clientes)
+    main_params = []
+    main_conditions = []
     if search:
-        where_conditions.append("cl.strNombreCte LIKE %s")
-        where_params.append(f"%{search}%")
-
-    if sucursal is not None:
-        # Filtra la tabla de clientes directamente por sucursal
-        # Asumiendo que tu tabla 'clientes' tiene una columna 'intSucursal'
-        where_conditions.append("cl.intSucursal = %s")
-        where_params.append(sucursal)
+        main_conditions.append("cl.strNombreCte LIKE %s")
+        main_params.append(f"%{search}%")
+    if sucursal:
+        main_conditions.append("cl.intSucursal = %s")
+        main_params.append(sucursal)
         
-    join_conditions.append("emb.intOcupado != 0")    
-    where_conditions_sql = ("WHERE " + " AND ".join(where_conditions)) if where_conditions else ""
+    main_where_sql = ("WHERE " + " AND ".join(main_conditions)) if main_conditions else ""
     
     try:
         with getConnection() as conn:
             with conn.cursor() as cursor:
-                # La consulta de conteo ahora usa el WHERE correcto para contar clientes
-                count_query = f"SELECT COUNT(*) as total FROM clientes cl {where_conditions_sql}"
-                cursor.execute(count_query, where_params)
-                total_count = cursor.fetchone()['total']           
-                
+                # El conteo se hace sobre la consulta principal de clientes
+                count_query = f"SELECT COUNT(*) as total FROM clientes cl {main_where_sql}"
+                cursor.execute(count_query, main_params)
+                total_count = cursor.fetchone()['total']
+
+                offset = (page - 1) * limit
                 data_query = f"""
-                    SELECT 
-                        cl.intIdCliente, cl.strNombreCte,
-                        emb.intOcupado, 
-                        COALESCE(COUNT(v.intIdViaje), 0) as Viajes,
-                        COALESCE(SUM(CASE WHEN v.intIdViaje IS NOT NULL THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as millasCargadas,
-                        COALESCE(SUM(v.strMillasVacias), 0) as millasVacias,
-                        COALESCE(SUM(CASE WHEN v.intIdViaje IS NOT NULL THEN emb.strRate ELSE 0 END), 0) as Rate,
-                        COALESCE(COUNT(CASE WHEN v.intIdViaje IS NOT NULL AND emb.intDirEntraSale = 2 THEN 1 END), 0) AS NB,
-                        COALESCE(COUNT(CASE WHEN v.intIdViaje IS NOT NULL AND emb.intDirEntraSale = 1 THEN 1 END), 0) AS SB,
-                        CASE 
-                            WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0 
-                            THEN COALESCE(SUM(emb.strRate), 0) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
-                            ELSE 0
-                        END as rate_perMile,
+                    SELECT
+                        cl.intIdCliente,
+                        cl.strNombreCte,
+                        COALESCE(metrics.Viajes, 0) as Viajes,
+                        COALESCE(metrics.millasCargadas, 0) as millasCargadas,
+                        COALESCE(metrics.millasVacias, 0) as millasVacias,
+                        COALESCE(metrics.Rate, 0) as Rate,
+                        COALESCE(metrics.NB, 0) AS NB,
+                        COALESCE(metrics.SB, 0) AS SB,
+                        COALESCE(metrics.rate_perMile, 0) as rate_perMile,
                         IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal
-                    FROM clientes cl
-                    LEFT JOIN embarques emb ON cl.intIdCliente = emb.intIdCliente {join_conditions_sql}
-                    LEFT JOIN viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
-                    INNER JOIN viajes v ON ve.intIdViaje = v.intIdViaje
-                    {where_conditions_sql}
-                    GROUP BY cl.intIdCliente, cl.strNombreCte
-                    ORDER BY cl.strNombreCte
+                    FROM
+                        clientes cl
+                    LEFT JOIN (
+                        SELECT
+                            emb.intIdCliente,
+                            COUNT(v.intIdViaje) as Viajes,
+                            SUM(emb.floatDistanciaGoogle) as millasCargadas,
+                            SUM(v.strMillasVacias) as millasVacias,
+                            SUM(emb.strRate) as Rate,
+                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS NB,
+                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS SB,
+                            CASE
+                                WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0
+                                THEN SUM(emb.strRate) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
+                                ELSE 0
+                            END as rate_perMile
+                        FROM
+                            embarques emb
+                        INNER JOIN
+                            viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
+                        INNER JOIN
+                            viajes v ON ve.intIdViaje = v.intIdViaje
+                        {subquery_where_sql}
+                        GROUP BY
+                            emb.intIdCliente
+                    ) AS metrics ON cl.intIdCliente = metrics.intIdCliente
+                    {main_where_sql}
+                    ORDER BY
+                        cl.strNombreCte
+                    LIMIT %s OFFSET %s
                 """
                 
-                # El orden de los parámetros debe coincidir con la consulta: fechas, luego where, luego paginación
-                final_params = date_params + where_params
+                final_params = subquery_params + main_params + [limit, offset]
+                
                 cursor.execute(data_query, final_params)
                 results = cursor.fetchall()
                 
