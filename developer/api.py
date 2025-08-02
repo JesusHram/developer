@@ -135,7 +135,6 @@ def embarques():
         
 
 @app.get("/reporte-clientes/")
-@app.get("/reporte-clientes/")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
@@ -227,13 +226,8 @@ async def get_reporte_clientes(
                 cursor.execute(data_query, final_params)
                 results = cursor.fetchall()
                 
-                total_count = len(results)
-                             
-                offset = (page - 1) * limit
                 
                 print(f">>> CALCULANDO OFFSET: {offset} (para página {page})")
-
-                paginated_results = results[offset : offset + limit]
                 
                 total_millas_Cargadas = sum(row.get('millasCargadas', 0) for row in results)
                 total_millas_Vacias = sum(row.get('millasVacias', 0) for row in results)
