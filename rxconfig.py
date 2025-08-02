@@ -3,6 +3,10 @@ import reflex as rx
 config = rx.Config(
     app_name="developer",
     api_url="http://dashboard.zarotransportation.com",
+    cors_allowed_origins=[
+        "http://dashboard.zarotransportation.com",
+        "https://dashboard.zarotransportation.com",
+    ],
     tailwind={
         "theme": {
             "extend": {
