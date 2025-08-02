@@ -360,14 +360,14 @@ async def get_comparativa_cliente(
         SELECT
             cl.strNombreCte,
             -- Agregación Condicional para el Periodo A
-            COALESCE(SUM(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN emb.strRate ELSE 0 END), 0) as Rate_A,
-            COALESCE(SUM(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as Millas_A,
-            COUNT(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN v.intIdViaje END) as Viajes_A,
+            COALESCE(SUM(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN emb.strRate ELSE 0 END), 0) as Rate_A,
+            COALESCE(SUM(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as Millas_A,
+            COUNT(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN v.intIdViaje END) as Viajes_A,
 
             -- Agregación Condicional para el Periodo B
-            COALESCE(SUM(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN emb.strRate ELSE 0 END), 0) as Rate_B,
-            COALESCE(SUM(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as Millas_B,
-            COUNT(CASE WHEN emb.dateFechaRecoleccion BETWEEN %s AND %s THEN v.intIdViaje END) as Viajes_B
+            COALESCE(SUM(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN emb.strRate ELSE 0 END), 0) as Rate_B,
+            COALESCE(SUM(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN emb.floatDistanciaGoogle ELSE 0 END), 0) as Millas_B,
+            COUNT(CASE WHEN DATE(emb.dateFechaRecoleccion) BETWEEN %s AND %s THEN v.intIdViaje END) as Viajes_B
         FROM
             clientes cl
         LEFT JOIN
