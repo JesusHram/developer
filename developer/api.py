@@ -13,7 +13,6 @@ load_dotenv()
 
 app = FastAPI(
     title="API Developer",
-    root_path="/api",
     version="1.0",
     description="API para la aplicación de desarrolladores",
 )
