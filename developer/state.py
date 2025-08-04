@@ -1,6 +1,10 @@
 import reflex as rx
 import httpx
 from typing import List, Optional
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 class State(rx.State):
     reporte_data: List[dict] = []
@@ -29,6 +33,7 @@ class State(rx.State):
     sucursal: Optional[str] = ""
     sucursales_list: List[dict] = []
 
+    API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
     
     @rx.var
     def viajes_diferencia(self) -> int:
@@ -152,7 +157,7 @@ class State(rx.State):
     async def cargar_sucursales(self):
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get("http://localhost:8000/sucursales/")
+                response = await client.get(f"{API_BASE_URL}/sucursales/")
             response_data = response.json()
             self.sucursales_list = response_data.get("data", [])
         except Exception as e:
@@ -197,7 +202,7 @@ class State(rx.State):
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    "http://localhost:8000/reporte-clientes/",
+                    f"{API_BASE_URL}/reporte-clientes/",
                     params=params
                 )
             response_data = response.json()
@@ -242,7 +247,7 @@ class State(rx.State):
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://localhost:8000/viajes-cliente/{id_cliente}",
+                    f"{API_BASE_URL}/viajes-cliente/{id_cliente}",
                     params=params
                 )
             
@@ -279,7 +284,7 @@ class State(rx.State):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://localhost:8000/comparativa-cliente/{id_cliente}",
+                    f"{API_BASE_URL}/comparativa-cliente/{id_cliente}",
                     params=params
                 )
             if response.status_code != 200:
