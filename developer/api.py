@@ -1,8 +1,7 @@
 from ast import expr_context
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, CORSMiddleware
 import pymysql
 from pymysql.cursors import DictCursor
-from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, datetime
 import httpx
 from typing import Optional
