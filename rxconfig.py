@@ -1,9 +1,19 @@
+import os
 import reflex as rx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_URL = os.getenv("API_URL", "http://localhost:8000")
+
 
 config = rx.Config(
     app_name="developer",
-    api_url="https://dashboard.zarotransportation.com",
+    api_url=API_URL,
     cors_allowed_origins=[
+        "http://localhost:3000",
+         API_URL,
+        "http://dashboard.zarotransportation.com",
         "https://dashboard.zarotransportation.com",
     ],
     tailwind={

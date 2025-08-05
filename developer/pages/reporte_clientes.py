@@ -43,7 +43,9 @@ def reporte_clientes():
             rx.table.cell((row["Rate"])),
             rx.table.cell((row["rate_perMile"])),
             rx.table.cell((row["NB"])),
+            rx.table.cell((row["rpmNB"])),
             rx.table.cell((row["SB"])),
+            rx.table.cell((row["rpmSB"])),
             rx.table.cell((row["Sucursal"])),
             rx.table.cell(render_acciones(row))
         )
@@ -101,7 +103,9 @@ def reporte_clientes():
                             rx.table.column_header_cell("Rate Total"),
                             rx.table.column_header_cell("Rate/Milla con vacias"),
                             rx.table.column_header_cell("NB"),
+                            rx.table.column_header_cell("rpmNB"),
                             rx.table.column_header_cell("SB"),
+                            rx.table.column_header_cell("rpmSB"),
                             rx.table.column_header_cell("Sucursal"),
                             rx.table.column_header_cell("Acciones"),
                         )

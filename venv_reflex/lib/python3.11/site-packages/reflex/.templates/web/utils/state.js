@@ -791,9 +791,9 @@ export const hydrateClientStorage = (client_storage) => {
     for (const state_key in client_storage.cookies) {
       const cookie_options = client_storage.cookies[state_key];
       const cookie_name = cookie_options.name || state_key;
-      const cookie_value = cookies.get(cookie_name);
+      const cookie_value = cookies.get(cookie_name, { doNotParse: true });
       if (cookie_value !== undefined) {
-        client_storage_values[state_key] = cookies.get(cookie_name);
+        client_storage_values[state_key] = cookie_value;
       }
     }
   }
@@ -993,7 +993,7 @@ export const useEventLoop = (
     window.onerror = function (msg, url, lineNo, columnNo, error) {
       addEvents([
         Event(`${exception_state_name}.handle_frontend_exception`, {
-          stack: error.stack,
+          info: error.name + ": " + error.message + "\n" + error.stack,
           component_stack: "",
         }),
       ]);
@@ -1005,7 +1005,12 @@ export const useEventLoop = (
     window.onunhandledrejection = function (event) {
       addEvents([
         Event(`${exception_state_name}.handle_frontend_exception`, {
-          stack: event.reason?.stack,
+          info:
+            event.reason?.name +
+            ": " +
+            event.reason?.message +
+            "\n" +
+            event.reason?.stack,
           component_stack: "",
         }),
       ]);

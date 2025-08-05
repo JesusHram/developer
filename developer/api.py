@@ -1,5 +1,6 @@
 from ast import expr_context
-from fastapi import FastAPI, HTTPException, Query, CORSMiddleware
+from fastapi import HTTPException, Query, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import pymysql
 from pymysql.cursors import DictCursor
 from datetime import date, datetime
@@ -8,22 +9,10 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 
+api_app = FastAPI()
+
 load_dotenv()
 
-app = FastAPI(
-    title="API Developer",
-    version="1.0",
-    description="API para la aplicación de desarrolladores",
-)
-
-# Configura CORS para permitir conexiones desde Reflex
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 db_host = os.getenv("DB_HOST")
 db_user = os.getenv("DB_USER")
@@ -31,7 +20,7 @@ db_password = os.getenv("DB_PASSWORD")
 db_name = os.getenv("DB_NAME")
 db_port = 3306
 
-@app.get("/")
+@api_app.get("/")
 def read_root():
     return {"message": "API funcionando"}
 
@@ -46,7 +35,7 @@ def getConnection():
         cursorclass=pymysql.cursors.DictCursor
     )
     
-@app.get("/choferes")
+@api_app.get("/choferes")
 def get_choferes():
     conn = getConnection()
     try:
@@ -70,7 +59,7 @@ def get_choferes():
     finally:
         conn.close()
         
-@app.get("/viajes")
+@api_app.get("/viajes")
 def get_viajes():
     conn = getConnection()
     try:
@@ -91,7 +80,7 @@ def get_viajes():
     finally:
         conn.close()
         
-@app.get("/clientes")
+@api_app.get("/clientes")
 def get_clientes():
     conn = getConnection()
     try:
@@ -112,7 +101,7 @@ def get_clientes():
     finally:
         conn.close()
         
-@app.get("/embarques")
+@api_app.get("/embarques")
 def embarques():
     conn = getConnection()
     try:
@@ -133,7 +122,7 @@ def embarques():
         conn.close()
         
 
-@app.get("/reporte-clientes/")
+@api_app.get("/reporte-clientes")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
@@ -142,7 +131,6 @@ async def get_reporte_clientes(
     limit: int = Query(10, ge=1, le=100),
     sucursal: Optional[str] = Query(None)
 ):
-    print(f"\n>>> API RECIBIÓ PETICIÓN PARA PÁGINA: {page}")
     # Parámetros para la subconsulta (actividad)
     subquery_params = []
     subquery_conditions = ["emb.intOcupado != 0"]
@@ -181,24 +169,32 @@ async def get_reporte_clientes(
                         cl.intIdCliente,
                         cl.strNombreCte,
                         COALESCE(metrics.Viajes, 0) as Viajes,
-                        COALESCE(metrics.millasCargadas, 0) as millasCargadas,
-                        COALESCE(metrics.millasVacias, 0) as millasVacias,
-                        COALESCE(metrics.Rate, 0) as Rate,
-                        COALESCE(metrics.NB, 0) AS NB,
-                        COALESCE(metrics.SB, 0) AS SB,
-                        COALESCE(metrics.rate_perMile, 0) as rate_perMile,
-                        IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal
+                        ROUND(COALESCE(metrics.millasCargadas, 0),2) as millasCargadas,
+                        ROUND(COALESCE(metrics.millasVacias, 0),2) as millasVacias,
+                        ROUND(COALESCE(metrics.Rate, 0),2) as Rate,
+                        ROUND(COALESCE(metrics.NB, 0),2) AS NB,
+                        ROUND(COALESCE(metrics.SB, 0),2) AS SB,
+                        ROUND(COALESCE(metrics.rate_perMile, 0),2) as rate_perMile,
+                        IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal,
+                        ROUND(COALESCE(metrics.RateSB, 0),2) as RateSB,
+                        ROUND(COALESCE(metrics.MillasSB, 0),2) as MillasSB,
+                        ROUND(COALESCE(metrics.RateNB, 0),2) as RateNB,
+                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB
                     FROM
                         clientes cl
                     LEFT JOIN (
                         SELECT
                             emb.intIdCliente,
                             COUNT(v.intIdViaje) as Viajes,
-                            SUM(emb.floatDistanciaGoogle) as millasCargadas,
-                            SUM(v.strMillasVacias) as millasVacias,
+                            SUM(CASE WHEN emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle/1.6093441) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
+                            SUM(CASE WHEN v.intSucursal = 1 THEN (v.strMillasVacias/1.609344) ELSE v.strMillasVacias END) as millasVacias,
                             SUM(emb.strRate) as Rate,
-                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS NB,
-                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS SB,
+                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS SB,
+                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS NB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 THEN emb.strRate ELSE 0 END) AS RateSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 THEN emb.strRate ELSE 0 END) AS RateNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasNB,
                             CASE
                                 WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0
                                 THEN SUM(emb.strRate) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
@@ -216,18 +212,22 @@ async def get_reporte_clientes(
                     ) AS metrics ON cl.intIdCliente = metrics.intIdCliente
                     {main_where_sql}
                     ORDER BY
-                        cl.strNombreCte
+                        rate_perMile DESC
                     LIMIT %s OFFSET %s
                 """
                 
                 final_params = subquery_params + main_params + [limit, offset]
-                
+
                 cursor.execute(data_query, final_params)
                 results = cursor.fetchall()
                 
+                for row in results:
+                    rpmNB = row["RateNB"] / row["MillasNB"] if row["MillasNB"] > 0 else 0
+                    rpmSB = row["RateSB"] / row["MillasSB"] if row["MillasSB"] > 0 else 0
+                    row["rpmNB"] = round(rpmNB,2)
+                    row["rpmSB"] = round(rpmSB,2)
                 
-                print(f">>> CALCULANDO OFFSET: {offset} (para página {page})")
-                
+                              
                 total_millas_Cargadas = sum(row.get('millasCargadas', 0) for row in results)
                 total_millas_Vacias = sum(row.get('millasVacias', 0) for row in results)
                 total_rate = sum(row.get('Rate', 0) for row in results)
@@ -258,8 +258,7 @@ async def get_reporte_clientes(
         print(f"Error en la base de datos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-# Endpoint para detalle de viajes por cliente
-@app.get("/viajes-cliente/{id_cliente}")
+@api_app.get("/viajes-cliente/{id_cliente}")
 async def get_viajes_cliente(
     id_cliente: int,
     fecha_inicio: date = Query(None),
@@ -358,9 +357,7 @@ async def get_viajes_cliente(
     except Exception as e:  
         raise HTTPException(status_code=500, detail=str(e))
     
-    
-    
-@app.get("/comparativa-cliente/{id_cliente}")
+@api_app.get("/comparativa_cliente/{id_cliente}")
 async def get_comparativa_cliente(
     id_cliente: int,
     fecha_inicio_a: date = Query(..., description="Inicio del Periodo A"),
@@ -415,8 +412,7 @@ async def get_comparativa_cliente(
                 return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get("/sucursales/")
+@api_app.get("/sucursales")    
 async def get_sucursales():
     query = """
         SELECT DISTINCT
@@ -434,8 +430,7 @@ async def get_sucursales():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-    
-@app.get("/reporte-camiones/")
+@api_app.get("/reporte_camiones")
 async def get_reporte_camiones():
     
     query = """
