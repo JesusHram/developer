@@ -1,15 +1,13 @@
 [Unit]
-Description=Reflex Frontend Server
+Description=Reflex Backend (for WebSocket /_event)
 After=network.target
 
 [Service]
 User=ubuntu
-Group=www-data
 WorkingDirectory=/home/ubuntu/developer
-
-# El comando para iniciar el servidor de Node.js de Reflex
-ExecStart=/home/ubuntu/developer.bun/bin/bun start
-Environment="PORT=3000"
+ExecStart=/home/ubuntu/developer/venv/bin/reflex run  --env prod --backend-port 8002
+Environment=PATH=/home/ubuntu/developer/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Restart=always
 
 [Install]
 WantedBy=multi-user.target

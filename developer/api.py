@@ -10,9 +10,7 @@ import os
 from dotenv import load_dotenv
 
 api_app = FastAPI()
-
 load_dotenv()
-
 
 db_host = os.getenv("DB_HOST")
 db_user = os.getenv("DB_USER")
