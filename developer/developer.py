@@ -9,7 +9,5 @@ app = rx.App(
     api_transformer=api_app,
 )
 
-
-
 app.add_page(dashboard, route="/")
 app.add_page(reporte_clientes, route="/reporte_clientes")

@@ -235,7 +235,7 @@ class State(rx.State):
         id_cliente = cliente.get("intIdCliente")
         
         try:
-            # CORRECCIÓN: Usa las variables de paginación del modal
+            #Usa las variables de paginación del modal
             params = {
                 "page": self.viajes_page,
                 "limit": self.viajes_limit,
@@ -301,3 +301,18 @@ class State(rx.State):
     def active_page(self) -> str:
         """Devuelve la ruta de la página actual."""
         return self.router.page.path
+    
+    @rx.var
+    def get_excel_url(self) -> str:
+        params = []
+        if self.fecha_inicio:
+            params.append(f"fecha_inicio={self.fecha_inicio}")
+        if self.fecha_fin:
+            params.append(f"fecha_fin={self.fecha_fin}")
+        if self.search_query:
+            params.append(f"search={self.search_query}")
+        if self.sucursal:
+            params.append(f"sucursal={self.sucursal}")
+
+        query = "&".join(params)
+        return f"{API_BASE_URL}/reporte_excel?{query}"
