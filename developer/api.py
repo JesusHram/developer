@@ -22,6 +22,8 @@ api_app = FastAPI()
 # Configura el router de la API
 api_router = APIRouter(prefix=API_PREFIX)
 
+api_app.include_router(api_router)
+
 # Obtiene la URL de la API desde las variables de entorno
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
