@@ -2,7 +2,9 @@ import reflex as rx
 from developer.pages.dashboard import dashboard
 from developer.pages.reporte_clientes import reporte_clientes
 from developer.theme import theme
-from developer.api import api_app
+from developer.api import api_app, api_router 
+
+api_app.include_router(api_router)
 
 app = rx.App(
     theme=theme,
@@ -11,3 +13,4 @@ app = rx.App(
 
 app.add_page(dashboard, route="/")
 app.add_page(reporte_clientes, route="/reporte_clientes")
+

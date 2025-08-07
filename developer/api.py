@@ -1,5 +1,5 @@
 from ast import expr_context
-from fastapi import HTTPException, Query, FastAPI
+from fastapi import HTTPException, Query, FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 import pymysql
 from pymysql.cursors import DictCursor
@@ -16,6 +16,8 @@ from fastapi.responses import Response
 api_app = FastAPI()
 load_dotenv()
 
+api_router = APIRouter(prefix="/api")
+
 API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
 db_host = os.getenv("DB_HOST")
@@ -24,7 +26,7 @@ db_password = os.getenv("DB_PASSWORD")
 db_name = os.getenv("DB_NAME")
 db_port = 3306
 
-@api_app.get("/")
+@api_router.get("/")
 def read_root():
     return {"message": "API funcionando"}
 
@@ -39,7 +41,7 @@ def getConnection():
         cursorclass=pymysql.cursors.DictCursor
     )
     
-@api_app.get("/choferes")
+@api_router.get("/choferes")
 def get_choferes():
     conn = getConnection()
     try:
@@ -63,7 +65,7 @@ def get_choferes():
     finally:
         conn.close()
         
-@api_app.get("/viajes")
+@api_router.get("/viajes")
 def get_viajes():
     conn = getConnection()
     try:
@@ -84,7 +86,7 @@ def get_viajes():
     finally:
         conn.close()
         
-@api_app.get("/clientes")
+@api_router.get("/clientes")
 def get_clientes():
     conn = getConnection()
     try:
@@ -105,7 +107,7 @@ def get_clientes():
     finally:
         conn.close()
         
-@api_app.get("/embarques")
+@api_router.get("/embarques")
 def embarques():
     conn = getConnection()
     try:
@@ -126,7 +128,7 @@ def embarques():
         conn.close()
         
 
-@api_app.get("/reporte-clientes")
+@api_router.get("/reporte-clientes")
 async def get_reporte_clientes(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
@@ -266,7 +268,7 @@ async def get_reporte_clientes(
         print(f"Error en la base de datos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-@api_app.get("/viajes-cliente/{id_cliente}")
+@api_router.get("/viajes-cliente/{id_cliente}")
 async def get_viajes_cliente(
     id_cliente: int,
     fecha_inicio: Optional[date] = Query(None),
@@ -365,7 +367,7 @@ async def get_viajes_cliente(
     except Exception as e:  
         raise HTTPException(status_code=500, detail=str(e))
     
-@api_app.get("/comparativa_cliente/{id_cliente}")
+@api_router.get("/comparativa_cliente/{id_cliente}")
 async def get_comparativa_cliente(
     id_cliente: int,
     fecha_inicio_a: date = Query(..., description="Inicio del Periodo A"),
@@ -420,7 +422,7 @@ async def get_comparativa_cliente(
                 return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-@api_app.get("/sucursales")    
+@api_router.get("/sucursales")    
 async def get_sucursales():
     query = """
         SELECT DISTINCT
@@ -438,7 +440,7 @@ async def get_sucursales():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@api_app.get("/reporte_camiones")
+@api_router.get("/reporte_camiones")
 async def get_reporte_camiones():
     
     query = """
@@ -452,7 +454,7 @@ async def get_reporte_camiones():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@api_app.get("/reporte_excel")
+@api_router.get("/reporte_excel")
 async def reporte_excel(
     fecha_inicio: Optional[date] = Query(None),
     fecha_fin: Optional[date] = Query(None),
@@ -499,25 +501,27 @@ async def reporte_excel(
                         IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal,
                         ROUND(COALESCE(metrics.RateSB, 0),2) as RateSB,
                         ROUND(COALESCE(metrics.MillasSB, 0),2) as MillasSB,
+                        ROUND(COALESCE(metrics.VaciasSB, 0),2) AS VaciasSB,
                         ROUND(COALESCE(metrics.RateNB, 0),2) as RateNB,
-                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB
+                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB,
+                        ROUND(COALESCE(metrics.VaciasNB, 0),2) AS VaciasNB
                     FROM
                         clientes cl
                     LEFT JOIN (
                         SELECT
                             emb.intIdCliente,
                             COUNT(v.intIdViaje) as Viajes,
-                            SUM(CASE WHEN emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle/1.6093441) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
-                            SUM(CASE WHEN v.intSucursal = 1 THEN (v.strMillasVacias/1.609344) ELSE v.strMillasVacias END) as millasVacias,
+                            SUM(CASE WHEN emb.intSucursal = 1 THEN (COALESCE(emb.floatDistanciaGoogle, 0) / 1.609344) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
+                            SUM(CASE WHEN v.intSucursal = 1 THEN (COALESCE(v.strMillasVacias, 0) / 1.609344) ELSE v.strMillasVacias END) as millasVacias,
                             SUM(emb.strRate) as Rate,
-                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS SB,
-                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS NB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 THEN 1 ELSE 0 END) AS SB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 THEN 1 ELSE 0 END) AS NB,
                             SUM(CASE WHEN emb.intDirEntraSale = 2 THEN emb.strRate ELSE 0 END) AS RateSB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasSB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (v.millasVacias/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS VaciasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (COALESCE(emb.floatDistanciaGoogle, 0) / 1.609344) WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 2 THEN emb.floatDistanciaGoogle ELSE 0 END) AS MillasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (COALESCE(v.strMillasVacias, 0) / 1.609344) WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 2 THEN v.strMillasVacias ELSE 0 END) AS VaciasSB,
                             SUM(CASE WHEN emb.intDirEntraSale = 1 THEN emb.strRate ELSE 0 END) AS RateNB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS VaciasNB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (v.millasVacias/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (COALESCE(emb.floatDistanciaGoogle, 0) / 1.609344) WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 2 THEN emb.floatDistanciaGoogle ELSE 0 END) AS MillasNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 1 THEN (COALESCE(v.strMillasVacias, 0) / 1.609344) WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 2 THEN v.strMillasVacias ELSE 0 END) AS VaciasNB,
                             CASE
                                 WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0
                                 THEN SUM(emb.strRate) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
@@ -541,8 +545,13 @@ async def reporte_excel(
                 
                 # Calcular rpmNB y rpmSB por cada fila
                 for row in results:
-                    rpmNB = row["RateNB"] / (row["MillasNB"] + row["VaciasNB"] if row["MillasNB"] > 0 else 0)
-                    rpmSB = row["RateSB"] / (row["MillasSB"] + row["VaciasSB"] if row["MillasSB"] > 0 else 0)
+                    # La suma total de las millas debe ser mayor que cero para evitar la división por cero
+                    total_millas_nb = row["MillasNB"] + row["VaciasNB"]
+                    rpmNB = row["RateNB"] / total_millas_nb if total_millas_nb > 0 else 0
+
+                    total_millas_sb = row["MillasSB"] + row["VaciasSB"]
+                    rpmSB = row["RateSB"] / total_millas_sb if total_millas_sb > 0 else 0
+
                     row["rpmNB"] = round(rpmNB, 2)
                     row["rpmSB"] = round(rpmSB, 2)
 
@@ -566,7 +575,7 @@ async def reporte_excel(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@api_app.get("/vista_rutas")
+@api_router.get("/vista_rutas")
 async def get_vista_rutas():
 
     params = []
@@ -579,3 +588,5 @@ async def get_vista_rutas():
                 return {"data": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+api_app.include_router(api_router)

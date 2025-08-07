@@ -159,7 +159,7 @@ class State(rx.State):
     async def cargar_sucursales(self):
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{API_BASE_URL}/sucursales")
+                response = await client.get(f"{API_BASE_URL}/api/sucursales")
             response_data = response.json()
             self.sucursales_list = response_data.get("data", [])
         except Exception as e:
@@ -204,7 +204,7 @@ class State(rx.State):
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{API_BASE_URL}/reporte-clientes",
+                    f"{API_BASE_URL}/api/reporte-clientes",
                     params=params
                 )
             response_data = response.json()
@@ -249,7 +249,7 @@ class State(rx.State):
             
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{API_BASE_URL}/viajes-cliente/{id_cliente}",
+                    f"{API_BASE_URL}/api/viajes-cliente/{id_cliente}",
                     params=params
                 )
             
@@ -286,7 +286,7 @@ class State(rx.State):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{API_BASE_URL}/comparativa-cliente/{id_cliente}",
+                    f"{API_BASE_URL}/api/comparativa-cliente/{id_cliente}",
                     params=params
                 )
             if response.status_code != 200:
@@ -315,4 +315,4 @@ class State(rx.State):
             params.append(f"sucursal={self.sucursal}")
 
         query = "&".join(params)
-        return f"{API_BASE_URL}/reporte_excel?{query}"
+        return f"{API_BASE_URL}/api/reporte_excel?{query}"
