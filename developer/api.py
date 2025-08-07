@@ -6,11 +6,17 @@ from pymysql.cursors import DictCursor
 from datetime import date, datetime
 import httpx
 from typing import Optional
+from io import BytesIO
 import os
+import pandas as pd
 from dotenv import load_dotenv
+from fastapi.responses import Response
+
 
 api_app = FastAPI()
 load_dotenv()
+
+API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
 db_host = os.getenv("DB_HOST")
 db_user = os.getenv("DB_USER")
@@ -149,7 +155,7 @@ async def get_reporte_clientes(
         main_params.append(f"%{search}%")
     if sucursal:
         main_conditions.append("cl.intSucursal = %s")
-        main_params.append(sucursal)
+        main_params.append(int(sucursal)) 
         
     main_where_sql = ("WHERE " + " AND ".join(main_conditions)) if main_conditions else ""
     
@@ -176,23 +182,27 @@ async def get_reporte_clientes(
                         IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal,
                         ROUND(COALESCE(metrics.RateSB, 0),2) as RateSB,
                         ROUND(COALESCE(metrics.MillasSB, 0),2) as MillasSB,
+                        ROUND(COALESCE(metrics.VaciasSB, 0),2) AS VaciasSB,
                         ROUND(COALESCE(metrics.RateNB, 0),2) as RateNB,
-                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB
+                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB,
+                        ROUND(COALESCE(metrics.VaciasNB, 0),2) AS VaciasNB
                     FROM
                         clientes cl
                     LEFT JOIN (
                         SELECT
                             emb.intIdCliente,
                             COUNT(v.intIdViaje) as Viajes,
-                            SUM(CASE WHEN emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle/1.6093441) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
+                            SUM(CASE WHEN emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle/1.609344) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
                             SUM(CASE WHEN v.intSucursal = 1 THEN (v.strMillasVacias/1.609344) ELSE v.strMillasVacias END) as millasVacias,
                             SUM(emb.strRate) as Rate,
-                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS SB,
-                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS NB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 THEN 1 ELSE 0 END) AS SB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 THEN 1 ELSE 0 END) AS NB,
                             SUM(CASE WHEN emb.intDirEntraSale = 2 THEN emb.strRate ELSE 0 END) AS RateSB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle / 1.609344) WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 2 THEN emb.floatDistanciaGoogle ELSE 0 END) AS MillasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (v.strMillasVacias / 1.609344) WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 2 THEN v.strMillasVacias ELSE 0 END) AS VaciasSB,
                             SUM(CASE WHEN emb.intDirEntraSale = 1 THEN emb.strRate ELSE 0 END) AS RateNB,
-                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle / 1.609344) WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 2 THEN emb.floatDistanciaGoogle ELSE 0 END) AS MillasNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 1 THEN (v.strMillasVacias / 1.609344) WHEN emb.intDirEntraSale = 1 AND emb.intSucursal = 2 THEN v.strMillasVacias ELSE 0 END) AS VaciasNB,
                             CASE
                                 WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0
                                 THEN SUM(emb.strRate) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
@@ -220,8 +230,8 @@ async def get_reporte_clientes(
                 results = cursor.fetchall()
                 
                 for row in results:
-                    rpmNB = row["RateNB"] / row["MillasNB"] if row["MillasNB"] > 0 else 0
-                    rpmSB = row["RateSB"] / row["MillasSB"] if row["MillasSB"] > 0 else 0
+                    rpmNB = row["RateNB"] / (row["MillasNB"] + row["VaciasNB"]) if (row["MillasNB"] + row["VaciasNB"]) > 0 else 0
+                    rpmSB = row["RateSB"] / (row["MillasSB"] + row["VaciasSB"]) if (row["MillasSB"] + row["VaciasSB"]) > 0 else 0
                     row["rpmNB"] = round(rpmNB,2)
                     row["rpmSB"] = round(rpmSB,2)
                 
@@ -259,8 +269,8 @@ async def get_reporte_clientes(
 @api_app.get("/viajes-cliente/{id_cliente}")
 async def get_viajes_cliente(
     id_cliente: int,
-    fecha_inicio: date = Query(None),
-    fecha_fin: date = Query(None),
+    fecha_inicio: Optional[date] = Query(None),
+    fecha_fin: Optional[date] = Query(None),
     page: int = Query(1, ge=1, description="Número de página"),
     limit: int = Query(10, ge=1, le=100, description="Registros por página"),
     sucursal: Optional[str] = Query(None)
@@ -281,9 +291,9 @@ async def get_viajes_cliente(
     if fecha_fin:
         conditions.append("DATE(e.dateFechaRecoleccion) <= %s")
         params.append(fecha_fin)
-    if sucursal:
-        conditions.append("e.intSucursal = %s")
-        params.append(sucursal)
+    if sucursal and sucursal.isdigit():
+        main_conditions.append("cl.intSucursal = %s")
+        main_params.append(int(sucursal))
 
     conditions.append("v.intIdViaje IS NOT NULL")
     
@@ -433,6 +443,134 @@ async def get_reporte_camiones():
     
     query = """
     """
+    try:
+        with getConnection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                results = cursor.fetchall()
+                return {"data": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@api_app.get("/reporte_excel")
+async def reporte_excel(
+    fecha_inicio: Optional[date] = Query(None),
+    fecha_fin: Optional[date] = Query(None),
+    search: Optional[str] = Query(None),
+    sucursal: Optional[str] = Query(None)
+):
+    try:
+        # 1. Conectar y ejecutar la query directamente SIN paginación
+        with getConnection() as conn:
+            with conn.cursor() as cursor:
+                params = []
+                subquery_conditions = ["emb.intOcupado != 0"]
+
+                if fecha_inicio:
+                    subquery_conditions.append("DATE(emb.dateFechaRecoleccion) >= %s")
+                    params.append(fecha_inicio)
+                if fecha_fin:
+                    subquery_conditions.append("DATE(emb.dateFechaRecoleccion) <= %s")
+                    params.append(fecha_fin)
+
+                subquery_where_sql = "WHERE " + " AND ".join(subquery_conditions)
+
+                main_conditions = []
+                if search:
+                    main_conditions.append("cl.strNombreCte LIKE %s")
+                    params.append(f"%{search}%")
+                if sucursal:
+                    main_conditions.append("cl.intSucursal = %s")
+                    params.append(int(sucursal))
+
+                main_where_sql = ("WHERE " + " AND ".join(main_conditions)) if main_conditions else ""
+
+                query = f"""
+                    SELECT
+                        cl.intIdCliente,
+                        cl.strNombreCte,
+                        COALESCE(metrics.Viajes, 0) as Viajes,
+                        ROUND(COALESCE(metrics.millasCargadas, 0),2) as millasCargadas,
+                        ROUND(COALESCE(metrics.millasVacias, 0),2) as millasVacias,
+                        ROUND(COALESCE(metrics.Rate, 0),2) as Rate,
+                        ROUND(COALESCE(metrics.NB, 0),2) AS NB,
+                        ROUND(COALESCE(metrics.SB, 0),2) AS SB,
+                        ROUND(COALESCE(metrics.rate_perMile, 0),2) as rate_perMile,
+                        IF(cl.intSucursal = 1, 'RAM','ZARO') as Sucursal,
+                        ROUND(COALESCE(metrics.RateSB, 0),2) as RateSB,
+                        ROUND(COALESCE(metrics.MillasSB, 0),2) as MillasSB,
+                        ROUND(COALESCE(metrics.RateNB, 0),2) as RateNB,
+                        ROUND(COALESCE(metrics.MillasNB, 0),2) as MillasNB
+                    FROM
+                        clientes cl
+                    LEFT JOIN (
+                        SELECT
+                            emb.intIdCliente,
+                            COUNT(v.intIdViaje) as Viajes,
+                            SUM(CASE WHEN emb.intSucursal = 1 THEN (emb.floatDistanciaGoogle/1.6093441) ELSE emb.floatDistanciaGoogle END) as millasCargadas,
+                            SUM(CASE WHEN v.intSucursal = 1 THEN (v.strMillasVacias/1.609344) ELSE v.strMillasVacias END) as millasVacias,
+                            SUM(emb.strRate) as Rate,
+                            COUNT(IF(emb.intDirEntraSale = 2, 1, NULL)) AS SB,
+                            COUNT(IF(emb.intDirEntraSale = 1, 1, NULL)) AS NB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 THEN emb.strRate ELSE 0 END) AS RateSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 2 AND emb.intSucursal =1 THEN (v.millasVacias/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS VaciasSB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 THEN emb.strRate ELSE 0 END) AS RateNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (emb.floatDistanciaGoogle/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS VaciasNB,
+                            SUM(CASE WHEN emb.intDirEntraSale = 1 AND emb.intSucursal =1 THEN (v.millasVacias/ 1.609344) ELSE emb.floatDistanciaGoogle END) AS MillasNB,
+                            CASE
+                                WHEN SUM(emb.floatDistanciaGoogle + v.strMillasVacias) > 0
+                                THEN SUM(emb.strRate) / SUM(emb.floatDistanciaGoogle + v.strMillasVacias)
+                                ELSE 0
+                            END as rate_perMile
+                        FROM
+                            embarques emb
+                        INNER JOIN
+                            viajes_embarques ve ON emb.intIdEmbarque = ve.intIdEmbarque
+                        INNER JOIN
+                            viajes v ON ve.intIdViaje = v.intIdViaje
+                        {subquery_where_sql}
+                        GROUP BY emb.intIdCliente, emb.intDirEntraSale
+                    ) AS metrics ON cl.intIdCliente = metrics.intIdCliente
+                    {main_where_sql}
+                    ORDER BY rate_perMile DESC
+                """
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+
+                
+                # Calcular rpmNB y rpmSB por cada fila
+                for row in results:
+                    rpmNB = row["RateNB"] / (row["MillasNB"] + row["VaciasNB"] if row["MillasNB"] > 0 else 0)
+                    rpmSB = row["RateSB"] / (row["MillasSB"] + row["VaciasSB"] if row["MillasSB"] > 0 else 0)
+                    row["rpmNB"] = round(rpmNB, 2)
+                    row["rpmSB"] = round(rpmSB, 2)
+
+        # 2. Crear DataFrame
+        df = pd.DataFrame(results)
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Reporte")
+
+        buffer.seek(0)
+
+        headers = {
+            "Content-Disposition": 'attachment; filename="reporte_clientes.xlsx"'
+        }
+        return Response(
+            content=buffer.getvalue(),
+            headers=headers,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@api_app.get("/vista_rutas")
+async def get_vista_rutas():
+
+    params = []
+    
     try:
         with getConnection() as conn:
             with conn.cursor() as cursor:
