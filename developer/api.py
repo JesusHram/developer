@@ -11,14 +11,23 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 from fastapi.responses import Response
-
-
-api_app = FastAPI()
+# Carga las variables de entorno
 load_dotenv()
 
-api_router = APIRouter(prefix="/api")
+# Obtiene el prefijo de la API desde la variable de entorno
+API_PREFIX = os.getenv("API_PREFIX", "/api")
 
-API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
+api_app = FastAPI()
+
+# Configura el router de la API
+api_router = APIRouter(prefix=API_PREFIX)
+
+# Incluye el router en la aplicación principal
+api_app.include_router(api_router)
+
+# Obtiene la URL de la API desde las variables de entorno
+API_URL = os.getenv("API_URL", "http://localhost:8000")
+
 
 db_host = os.getenv("DB_HOST")
 db_user = os.getenv("DB_USER")
